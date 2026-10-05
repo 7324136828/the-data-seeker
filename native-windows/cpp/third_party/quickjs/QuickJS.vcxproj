@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64"><Configuration>Debug</Configuration><Platform>x64</Platform></ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals"><VCProjectVersion>18.0</VCProjectVersion><Keyword>Win32Proj</Keyword><ProjectGuid>{03F0A95F-667F-480E-BADF-90507C26973D}</ProjectGuid><RootNamespace>QuickJS</RootNamespace><ProjectName>QuickJS</ProjectName></PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration"><ConfigurationType>StaticLibrary</ConfigurationType><CharacterSet>Unicode</CharacterSet><WholeProgramOptimization>false</WholeProgramOptimization></PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration"><UseDebugLibraries>true</UseDebugLibraries></PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Release'" Label="Configuration"><UseDebugLibraries>false</UseDebugLibraries></PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ItemDefinitionGroup><ClCompile>
+    <CompileAs>CompileAsC</CompileAs><LanguageStandard>Default</LanguageStandard><LanguageStandard_C>stdc11</LanguageStandard_C>
+    <AdditionalOptions>/utf-8 /experimental:c11atomics /J /MP2</AdditionalOptions>
+    <!-- Upstream uses intentional unsigned modular negation and C extensions.
+         Keep /GS and CFG; MSVC /sdl promotes that modular arithmetic to C4146. -->
+    <SDLCheck>false</SDLCheck>
+    <PreprocessorDefinitions>QUICKJS_NG_BUILD;_GNU_SOURCE;_WIN32_WINNT=0x0601;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    <DisableSpecificWarnings>4018;4061;4098;4100;4132;4146;4200;4242;4244;4245;4267;4334;4388;4389;4456;4457;4710;4711;4820;4996;5045;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+  </ClCompile></ItemDefinitionGroup>
+  <ItemGroup><ClCompile Include="dtoa.c"/><ClCompile Include="libregexp.c"/><ClCompile Include="libunicode.c"/><ClCompile Include="quickjs.c"/></ItemGroup>
+  <ItemGroup><ClInclude Include="builtin-array-fromasync.h"/><ClInclude Include="builtin-iterator-zip.h"/><ClInclude Include="builtin-iterator-zip-keyed.h"/><ClInclude Include="cutils.h"/><ClInclude Include="dtoa.h"/><ClInclude Include="libregexp.h"/><ClInclude Include="libregexp-opcode.h"/><ClInclude Include="libunicode.h"/><ClInclude Include="libunicode-table.h"/><ClInclude Include="list.h"/><ClInclude Include="quickjs.h"/><ClInclude Include="quickjs-atom.h"/><ClInclude Include="quickjs-c-atomics.h"/><ClInclude Include="quickjs-libc.h"/><ClInclude Include="quickjs-opcode.h"/><ClInclude Include="unicode_gen_def.h"/></ItemGroup>
+  <ItemGroup><None Include="LICENSE"/><None Include="SOURCE.json"/></ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

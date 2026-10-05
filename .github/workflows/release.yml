@@ -1,0 +1,89 @@
+name: Release Data Seeker
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: data-seeker-release-main
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  release:
+    name: Windows x64 release
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Check out pushed source
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Build, test and verify the Windows package
+        id: package
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $resource = Get-Content -LiteralPath 'native-windows/cpp/resources/DataForgeStudio.rc' -Raw
+          $match = [regex]::Match($resource, '(?m)^\s*PRODUCTVERSION\s+(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*0\s*$')
+          if (-not $match.Success) {
+            throw 'Expected a numeric major,minor,patch,0 native product version.'
+          }
+          $version = '{0}.{1}.{2}' -f $match.Groups[1].Value, $match.Groups[2].Value, $match.Groups[3].Value
+          # This script gates publication on build, CLI/GUI tests, package
+          # allowlisting, staged credential checks and extracted-application tests.
+          ./native-windows/scripts/package.ps1 -Configuration Release -Platform x64 -Version $version
+          if ($LASTEXITCODE -ne 0) {
+            throw "Native package verification failed with exit code $LASTEXITCODE."
+          }
+          $zip = "native-windows/dist/DataForgeStudio-v$version-windows-x64.zip"
+          $checksum = "$zip.sha256"
+          foreach ($asset in @($zip, $checksum)) {
+            if (-not (Test-Path -LiteralPath $asset -PathType Leaf) -or (Get-Item -LiteralPath $asset).Length -le 0) {
+              throw "Release asset missing or empty: $asset"
+            }
+          }
+          # Unique even when two pushes retain the same application version
+          # or a failed release run is retried.
+          $tag = "v$version-build.$env:GITHUB_RUN_ID.$env:GITHUB_RUN_ATTEMPT"
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "zip=$zip" >> $env:GITHUB_OUTPUT
+          "checksum=$checksum" >> $env:GITHUB_OUTPUT
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.package.outputs.version }}
+          RELEASE_TAG: ${{ steps.package.outputs.tag }}
+          ZIP_PATH: ${{ steps.package.outputs.zip }}
+          CHECKSUM_PATH: ${{ steps.package.outputs.checksum }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $notesPath = Join-Path $env:RUNNER_TEMP 'data-seeker-release-notes.md'
+          $notes = @(
+            "Native Windows x64 package for Data Seeker (DataForge Studio $env:RELEASE_VERSION)."
+            ''
+            'Extract the complete ZIP and run DataForgeStudio.exe. Keep the three provider DLLs beside it.'
+            'The official Microsoft Visual C++ x64 redistributable is included under runtime/ if needed.'
+            'No Python, React, Node.js or browser is required to run the application.'
+            ''
+            "Commit: $env:GITHUB_SHA"
+            "Build and package verification: $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+          )
+          Set-Content -LiteralPath $notesPath -Value $notes -Encoding utf8
+          # Create the tag on this exact tested commit and publish both complete assets.
+          gh release create "$env:RELEASE_TAG" "$env:ZIP_PATH" "$env:CHECKSUM_PATH" --repo "$env:GITHUB_REPOSITORY" --target "$env:GITHUB_SHA" --title "Data Seeker v$env:RELEASE_VERSION (build $env:GITHUB_RUN_NUMBER)" --notes-file "$notesPath" --generate-notes --latest
+          if ($LASTEXITCODE -ne 0) {
+            throw 'GitHub release creation or asset upload failed.'
+          }

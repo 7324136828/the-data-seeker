@@ -1,0 +1,93 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{A1B2C3D4-0001-0001-0001-000000000001}</ProjectGuid>
+    <RootNamespace>Core</RootNamespace>
+    <ProjectName>Core</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ItemGroup>
+    <ClInclude Include="include\native\Types.h" />
+    <ClInclude Include="include\native\JsonSerialization.h" />
+    <ClInclude Include="include\native\ScriptRuntime.h" />
+    <ClInclude Include="src\ScriptBootstrap.h" />
+    <ClInclude Include="include\native\VariableResolver.h" />
+    <ClInclude Include="include\native\Assertions.h" />
+    <ClInclude Include="include\native\HttpEngine.h" />
+    <ClInclude Include="include\native\DbEngine.h" />
+    <ClInclude Include="include\native\CurlParser.h" />
+    <ClInclude Include="include\native\CodeGen.h" />
+    <ClInclude Include="include\native\OpenApiParser.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\VariableResolver.cpp" />
+    <ClCompile Include="src\JsonSerialization.cpp" />
+    <ClCompile Include="src\ScriptRuntime.cpp" />
+    <ClCompile Include="src\Assertions.cpp" />
+    <ClCompile Include="src\HttpEngine.cpp" />
+    <ClCompile Include="src\DbEngine.cpp" />
+    <ClCompile Include="src\CurlParser.cpp" />
+    <ClCompile Include="src\CodeGen.cpp" />
+    <ClCompile Include="src\OpenApiParser.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\third_party\quickjs\QuickJS.vcxproj">
+      <Project>{03F0A95F-667F-480E-BADF-90507C26973D}</Project>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..\third_party\yaml-cpp\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>YAML_CPP_STATIC_DEFINE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\third_party\yaml-cpp\YamlCpp.vcxproj">
+      <Project>{7BA71BF9-88A3-4E6A-9FCC-63FF5B19B930}</Project>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\NativeConnections.cpp" />
+    <ClCompile Include="src\OdbcProvider.cpp" />
+    <ClCompile Include="src\RedisProvider.cpp" />
+    <ClCompile Include="src\MongoProvider.cpp" />
+    <ClCompile Include="src\DuckDbProvider.cpp" />
+    <ClCompile Include="src\NativeMockServer.cpp" />
+    <ClCompile Include="src\NativeSocket.cpp" />
+    <ClCompile Include="src\ImportDocument.cpp" />
+    <ClInclude Include="include\native\NativeConnections.h" />
+    <ClInclude Include="include\native\DbValues.h" />
+    <ClInclude Include="include\native\NativeMockServer.h" />
+    <ClInclude Include="include\native\NativeSocket.h" />
+    <ClInclude Include="include\native\SqlProvider.h" />
+    <ClInclude Include="include\native\ImportDocument.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

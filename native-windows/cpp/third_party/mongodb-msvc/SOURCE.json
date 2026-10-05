@@ -1,0 +1,52 @@
+﻿{
+    "Project":  "MongoDB C Driver",
+    "Version":  "2.5.5",
+    "Source":  "https://github.com/mongodb/mongo-c-driver/releases/tag/2.5.5",
+    "Archive":  "https://github.com/mongodb/mongo-c-driver/releases/download/2.5.5/mongo-c-driver-2.5.5.tar.gz",
+    "ArchiveSha256":  "fa255802fe748b98d4464e07223e87a44c88c02c35398d7607b2f02e967395b1",
+    "Architecture":  "Windows x64",
+    "Origin":  "Local MSVC native source build",
+    "Compiler":  "MSVC v145 tools14.51.36231",
+    "BuildFlags":  [
+                       "CMAKE_BUILD_TYPE=Release",
+                       "CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL",
+                       "ENABLE_SSL=WINDOWS",
+                       "ENABLE_SASL=SSPI",
+                       "ENABLE_SRV=ON",
+                       "ENABLE_SNAPPY=OFF",
+                       "ENABLE_ZLIB=OFF",
+                       "ENABLE_ZSTD=OFF"
+                   ],
+    "Files":  [
+                  {
+                      "File":  "bin/bson2.dll",
+                      "Sha256":  "4d0092ac4b9509101db5badf638a9cebcfae292c37831eeb25c13a02c7791826",
+                      "Length":  242176
+                  },
+                  {
+                      "File":  "bin/mongoc2.dll",
+                      "Sha256":  "d855ca6af60edba8de7504f4919b30a7ca64f82b3a759683aad55014879db43e",
+                      "Length":  1468928
+                  },
+                  {
+                      "File":  "lib/bson2.dll.lib",
+                      "Sha256":  "62ebc3f683265f17b6adb9d7fa90e2550715a4a320fc206319afb47d153ccf3f",
+                      "Length":  66902
+                  },
+                  {
+                      "File":  "lib/mongoc2.dll.lib",
+                      "Sha256":  "ad68ac682834728a7ada7d0657d227b61a729f410a960d1af0000060bd52fbe2",
+                      "Length":  229682
+                  },
+                  {
+                      "File":  "share/mongo-c-driver/2.5.5/COPYING",
+                      "Sha256":  "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+                      "Length":  10174
+                  },
+                  {
+                      "File":  "share/mongo-c-driver/2.5.5/THIRD_PARTY_NOTICES",
+                      "Sha256":  "2f397b6b524dadf7385fc0fac003fd713781cf84adb146fd85eecd8351defbe5",
+                      "Length":  8959
+                  }
+              ]
+}

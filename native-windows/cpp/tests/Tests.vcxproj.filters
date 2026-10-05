@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup><Filter Include="Source Files"><Extensions>cpp;c</Extensions></Filter><Filter Include="Header Files"><Extensions>h;hpp</Extensions></Filter><Filter Include="Resource Files"><Extensions>rc;ico;manifest</Extensions></Filter></ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="TestRunner.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="ScriptTests.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="SnippetTests.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="ImportTests.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="CurlImportTests.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="DbProviderTests.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="ErLayoutTests.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="ErRoutingTests.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\app\ErLayout.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\app\ErRouting.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="..\app\ErLayout.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="..\app\ErRouting.h"><Filter>Header Files</Filter></ClInclude>
+  </ItemGroup>
+</Project>

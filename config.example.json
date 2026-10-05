@@ -1,0 +1,8 @@
+﻿{
+    "requestTimeoutSeconds":  30,
+    "version":  "1.0.0",
+    "maxQueryResults":  1000,
+    "workbenchMode":  "apiClient",
+    "telemetryEnabled":  false,
+    "theme":  "dark"
+}
