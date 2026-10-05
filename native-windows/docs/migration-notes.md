@@ -1,6 +1,6 @@
 # Migration notes
 
-The original Python/React project remains in `../original-project`. The authoritative native delivery is `native-windows/cpp/DataForgeStudio.sln` and this directory’s scripts; root entry points forward here. Earlier root C++ files are reference material. Isolation preserves the candidate after unexplained root source changes; the user reported no concurrent editor. A later computer shutdown interrupted verification, and acceptance resumes from saved sources with fresh guarded builds.
+The original Python/React implementation provided the feature reference. Its `../original-project` directory is absent from the current worktree, so earlier original-source audits are historical. The authoritative native delivery is `native-windows/cpp/DataForgeStudio.sln` and this directory’s scripts; root entry points forward here. Earlier root C++ files are reference material. Isolation preserves the candidate after unexplained root source changes; the user reported no concurrent editor. A later computer shutdown interrupted verification, and acceptance resumes from saved sources with fresh guarded builds.
 
 The existing Win32 interface was retained. Original request scripting now uses the compiled native QuickJS engine, while optional mock serving uses a native loopback worker. Generated Python/JavaScript snippets are output text; the app does not execute them or require their runtimes.
 
@@ -15,6 +15,7 @@ The existing Win32 interface was retained. Original request scripting now uses t
 | Missing Mongo property suggestions and Redis command colors | Quoted JSON property/operator completion and line-leading native command highlighting |
 | Detached HTTP workers and blocking SQL | Owned cancellable jobs with document identities, thread joins and UI-loop completion |
 | Scrollbar layout callbacks re-entered recursively | Layout guard and actual-client-size comparison |
+| ER relationships tangled at headers with overlapping labels | Column-level orthogonal routes around cards, dependency/cycle-aware Auto arrange, table selection highlighting and hover status; saved manual positions survive refresh |
 | One active request/query and lost state | Independent documents, per-request response/console, protected query history/workspace and multiple result selection |
 | Missing script/import/provider/mock features | Native QuickJS/`pm`, YAML/Postman/OpenAPI adapters, DuckDB/ODBC/Mongo/Redis providers and SQL-backed mock REST service |
 | Incorrect SQL mutation/maintenance handling | Native stepping, rollback, separate autocommit maintenance handling, typed values and cancellation |

@@ -34,6 +34,9 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..\app;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
     </Link>
@@ -45,6 +48,14 @@
     <ClCompile Include="ImportTests.cpp" />
     <ClCompile Include="CurlImportTests.cpp" />
     <ClCompile Include="DbProviderTests.cpp" />
+    <ClCompile Include="ErLayoutTests.cpp" />
+    <ClCompile Include="ErRoutingTests.cpp" />
+    <ClCompile Include="..\app\ErLayout.cpp" />
+    <ClCompile Include="..\app\ErRouting.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\app\ErLayout.h" />
+    <ClInclude Include="..\app\ErRouting.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\core\Core.vcxproj">

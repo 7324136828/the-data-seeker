@@ -681,6 +681,8 @@ void TestNativeMockRestService();
 void TestNativeSnippetBehavior();
 void TestNativeScriptRuntime();
 void TestNativeScriptPersistence();
+void TestErLayout();
+void TestNativeErRoutingGeometry();
 int wmain(int argc, wchar_t* argv[]) {
     if (argc > 1 && std::wstring(argv[1]) == L"--wait") { Sleep(1000); return 0; }
     if (argc > 1 && std::wstring(argv[1]) == L"--echo-args") {
@@ -703,6 +705,8 @@ int wmain(int argc, wchar_t* argv[]) {
     RUN_TEST(TestNativeSnippetBehavior);
     RUN_TEST(TestNativeScriptRuntime);
     RUN_TEST(TestNativeScriptPersistence);
+    RUN_TEST(TestErLayout);
+    RUN_TEST(TestNativeErRoutingGeometry);
     RUN_TEST(TestVariableSubstitution);
     RUN_TEST(TestAssertions);
     RUN_TEST(TestCurlParser);

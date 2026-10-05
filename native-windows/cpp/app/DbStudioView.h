@@ -12,6 +12,7 @@
 #include "DbEngine.h"
 #include "Theme.h"
 #include "CodeEditor.h"
+#include "ErRouting.h"
 
 namespace native_app {
 
@@ -164,10 +165,18 @@ private:
     int erCanvasX_ = 0, erCanvasY_ = 0;
     std::map<std::string, std::map<std::string, POINT>> erPositions_;
     std::map<std::string, RECT> erCardRects_;
+    ErRoutingResult erRoutes_;
+    struct ErCrossing { ErRoutePoint point; size_t horizontal = 0, vertical = 0; };
+    std::vector<ErCrossing> erCrossings_;
+    bool erRoutesDirty_ = true;
+    std::string selectedErTable_;
+    int hoveredErLink_ = -1;
     std::string draggedTable_;
     POINT dragStart_{};
     POINT dragPosition_{};
     void EnsureErPositions(bool reset = false);
+    void RebuildErRoutes();
+    void UpdateErStatus();
     void OpenConnection(bool editing = false);
     void ShowConnectionTools();
     std::unique_ptr<NativeMockServer> mockServer_;

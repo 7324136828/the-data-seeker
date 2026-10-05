@@ -8,5 +8,11 @@
     <ClCompile Include="ImportTests.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="CurlImportTests.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="DbProviderTests.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="ErLayoutTests.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="ErRoutingTests.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\app\ErLayout.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="..\app\ErRouting.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="..\app\ErLayout.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="..\app\ErRouting.h"><Filter>Header Files</Filter></ClInclude>
   </ItemGroup>
 </Project>

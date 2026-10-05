@@ -8,6 +8,8 @@
     <ClInclude Include="HeaderBar.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="ApiClientView.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="DbStudioView.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="ErLayout.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="ErRouting.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="Modals.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="MainWindow.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="..\resources\resource.h"><Filter>Header Files</Filter></ClInclude>
@@ -17,6 +19,8 @@
     <ClCompile Include="HeaderBar.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="ApiClientView.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="DbStudioView.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="ErLayout.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="ErRouting.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="Modals.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="MainWindow.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="App.cpp"><Filter>Source Files</Filter></ClCompile>

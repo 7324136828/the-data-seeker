@@ -2,6 +2,7 @@
 #include "CodeEditor.h"
 #include "TempWorkspace.h"
 #include "NativeMockServer.h"
+#include "ErLayout.h"
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
@@ -119,6 +120,38 @@ bool MainWindow::RunSelfTests(std::wstring& failure) {
         main.headerBar_.SetMode(WorkbenchMode::DatabaseStudio);main.dbStudioView_->LoadSql("SELECT id, name, price FROM products ORDER BY price DESC LIMIT 10;");main.dbStudioView_->Execute();check(pump(),L"whole native SQL workflow finishes");
         check(VisibleChildrenFit(main.dbStudioView_->GetHwnd(),failure),L"database default layout stays in bounds");check(SaveView(main.hWnd_,artifacts/"sql-dark.bmp"),L"native SQL view renders");
         Theme::SetTextScale(150);main.ApplyTheme();check(VisibleChildrenFit(main.dbStudioView_->GetHwnd(),failure),L"enlarged database layout stays in bounds");check(SaveView(main.hWnd_,artifacts/"sql-150.bmp"),L"enlarged SQL view renders");Theme::SetTextScale(100);main.ApplyTheme();
+        HWND databaseView = main.dbStudioView_->GetHwnd();
+        SendMessageW(databaseView, WM_COMMAND, 3403, 0); SendMessageW(databaseView, WM_COMMAND, 3405, 0);
+        check(VisibleChildrenFit(databaseView, failure), L"automatically arranged ER view controls stay in bounds");
+        check(SaveView(main.hWnd_, artifacts/"er-dark.bmp"), L"column-level ER connectors render in dark mode");
+        // A larger hidden review window exposes the entire sample at the host DPI.
+        RECT originalWindow{}; GetWindowRect(main.hWnd_, &originalWindow);
+        SetWindowPos(main.hWnd_, nullptr, 0, 0, Theme::Scale(1280), Theme::Scale(950), SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        check(VisibleChildrenFit(databaseView, failure), L"complete ER overview controls stay in bounds");
+        check(SaveView(main.hWnd_, artifacts/"er-overview-dark.bmp"), L"complete sample ER overview renders");
+        const auto sampleSchema = main.dbEngine_->GetSchema(database.id);
+        std::vector<ErLayoutNode> layoutNodes; std::vector<ErLayoutEdge> layoutEdges;
+        for (const auto& table : sampleSchema.tables) {
+            layoutNodes.push_back({table.name, 235, 38 + static_cast<int>(table.columns.size()) * 24});
+            for (const auto& key : table.foreignKeys) layoutEdges.push_back({table.name, key.targetTable});
+        }
+        const auto arranged = ComputeErLayout(layoutNodes, layoutEdges); const auto product = arranged.find("products");
+        if (product != arranged.end()) {
+            RECT tab{}, bar{}; GetWindowRect(GetDlgItem(databaseView, 3400), &tab); GetWindowRect(GetDlgItem(databaseView, 3405), &bar);
+            MapWindowPoints(nullptr, databaseView, reinterpret_cast<POINT*>(&tab), 2); MapWindowPoints(nullptr, databaseView, reinterpret_cast<POINT*>(&bar), 2);
+            const int x = tab.left + Theme::Scale(product->second.x + 24), y = bar.bottom + Theme::Scale(6 + product->second.y + 44);
+            SendMessageW(databaseView, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y)); SendMessageW(databaseView, WM_LBUTTONUP, 0, MAKELPARAM(x, y));
+            check(SaveView(main.hWnd_, artifacts/"er-selected-dark.bmp"), L"selected ER table highlights its relationships");
+            SendMessageW(databaseView, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(tab.left + Theme::Scale(5), bar.bottom + Theme::Scale(11)));
+        } else check(false, L"ER overview contains the sample products table");
+        SetWindowPos(main.hWnd_, nullptr, 0, 0, originalWindow.right - originalWindow.left, originalWindow.bottom - originalWindow.top, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        Theme::SetTheme(AppTheme::Light); main.ApplyTheme();
+        check(SaveView(main.hWnd_, artifacts/"er-light.bmp"), L"column-level ER connectors render in light mode");
+        Theme::SetTextScale(150); main.ApplyTheme();
+        check(VisibleChildrenFit(databaseView, failure), L"ER controls stay in bounds at 150% text");
+        check(SaveView(main.hWnd_, artifacts/"er-150.bmp"), L"enlarged ER connectors render with native scrolling");
+        Theme::SetTextScale(100); Theme::SetTheme(AppTheme::Dark); main.ApplyTheme();
+        SendMessageW(databaseView, WM_COMMAND, 3400, 0);
         HWND editor=GetDlgItem(main.dbStudioView_->GetHwnd(),3101);MSG enter{};enter.hwnd=editor;enter.message=WM_KEYDOWN;enter.wParam=VK_RETURN;
         check((SendMessageW(editor,WM_GETDLGCODE,VK_RETURN,reinterpret_cast<LPARAM>(&enter))&DLGC_WANTMESSAGE)!=0,L"SQL editor receives Enter through dialog navigation");
         main.dbStudioView_->LoadSql("WITH RECURSIVE counter(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM counter WHERE n<100000000) SELECT sum(n) FROM counter;");main.dbStudioView_->Execute();SendMessageW(main.hWnd_,WM_CLOSE,0,0);

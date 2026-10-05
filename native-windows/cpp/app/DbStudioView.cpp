@@ -1,5 +1,6 @@
 ﻿#include "DbStudioView.h"
 #include <windowsx.h>
+#include "ErLayout.h"
 #include <uxtheme.h>
 #include "CodeEditor.h"
 #include "Modals.h"
@@ -422,7 +423,7 @@ bool DbStudioView::Create(HWND hParent, int x, int y, int width, int height, UIN
     lvc.cx = 200; lvc.pszText = const_cast<LPWSTR>(L"Columns"); ListView_InsertColumn(hListSchemaIdx_, 3, &lvc);
     hSchemaTitle_ = CreateWindowExW(0, L"STATIC", L"Select a database object", WS_CHILD, 0, 0, 300, 30, hWnd_, nullptr, GetModuleHandle(nullptr), nullptr);
     hBtnCopyDdl_ = CreateWindowExW(0, L"BUTTON", L"Copy DDL", WS_CHILD | WS_TABSTOP, 0, 0, 130, 30, hWnd_, reinterpret_cast<HMENU>(3305), GetModuleHandle(nullptr), nullptr);
-    hBtnResetEr_ = CreateWindowExW(0, L"BUTTON", L"Reset layout", WS_CHILD | WS_TABSTOP, 0, 0, 140, 30, hWnd_, reinterpret_cast<HMENU>(3405), GetModuleHandle(nullptr), nullptr);
+    hBtnResetEr_ = CreateWindowExW(0, L"BUTTON", L"Auto arrange", WS_CHILD | WS_TABSTOP, 0, 0, 140, 30, hWnd_, reinterpret_cast<HMENU>(3405), GetModuleHandle(nullptr), nullptr);
     hErStatus_ = CreateWindowExW(0, L"STATIC", L"Drag a card header to move a table. Scroll to explore relationships.", WS_CHILD | SS_ENDELLIPSIS,
         0, 0, 400, 30, hWnd_, nullptr, GetModuleHandle(nullptr), nullptr);
     hEditSchemaDdl_ = CodeEditor::Create(hWnd_, 3304, EditorLanguage::Sql, true);
@@ -1115,30 +1116,103 @@ void DbStudioView::RefreshSchemaViewer() {
 }
 
 void DbStudioView::RefreshErDiagram() {
+    if (erDiagram_.databaseId != activeDbId_) selectedErTable_.clear();
     erDiagram_.nodes.clear(); erDiagram_.links.clear(); erDiagram_.databaseId = activeDbId_;
     for (const auto& table : schema_.tables) {
         ERNode node; node.id = table.name; node.name = table.name; node.columns = table.columns; node.rowCount = table.rowCount;
         erDiagram_.nodes.push_back(std::move(node));
         for (const auto& key : table.foreignKeys) {
-            ERLink link; link.id = table.name + "." + key.fromColumn; link.source = table.name; link.sourceCol = key.fromColumn;
+            ERLink link; link.id = table.name + "." + key.fromColumn + ":" + std::to_string(erDiagram_.links.size()); link.source = table.name; link.sourceCol = key.fromColumn;
             link.target = key.targetTable; link.targetCol = key.toColumn; link.onUpdate = key.onUpdate; link.onDelete = key.onDelete;
             erDiagram_.links.push_back(std::move(link));
         }
     }
-    EnsureErPositions(); UpdateErScrollbars();
-    const std::wstring status = std::to_wstring(erDiagram_.nodes.size()) + L" objects, " + std::to_wstring(erDiagram_.links.size()) + L" relationships. Drag a card header to move it.";
-    SetWindowTextW(hErStatus_, status.c_str()); InvalidateRect(hWnd_, nullptr, TRUE);
+    if (std::none_of(erDiagram_.nodes.begin(), erDiagram_.nodes.end(), [this](const auto& node) { return node.name == selectedErTable_; })) selectedErTable_.clear();
+    hoveredErLink_ = -1; erRoutesDirty_ = true;
+    EnsureErPositions(); UpdateErScrollbars(); UpdateErStatus(); InvalidateRect(hWnd_, nullptr, TRUE);
 }
 void DbStudioView::EnsureErPositions(bool reset) {
     auto& positions = erPositions_[activeDbId_]; if (reset) { positions.clear(); erOffsetX_ = erOffsetY_ = 0; }
-    int rowHeight = 250;
-    for (const auto& node : erDiagram_.nodes) rowHeight = std::max(rowHeight, 68 + static_cast<int>(node.columns.size()) * 24);
-    for (size_t index = 0; index < erDiagram_.nodes.size(); ++index) {
-        const auto& node = erDiagram_.nodes[index];
-        if (positions.find(node.name) == positions.end()) positions[node.name] = {20 + static_cast<int>(index % 3) * 275, 20 + static_cast<int>(index / 3) * rowHeight};
+    if (!reset && std::all_of(erDiagram_.nodes.begin(), erDiagram_.nodes.end(), [&positions](const auto& node) { return positions.find(node.name) != positions.end(); })) return;
+    std::vector<ErLayoutNode> nodes; std::vector<ErLayoutEdge> links;
+    for (const auto& node : erDiagram_.nodes) nodes.push_back({node.name, 235, 38 + static_cast<int>(node.columns.size()) * 24});
+    for (const auto& link : erDiagram_.links) links.push_back({link.source, link.target});
+    const auto arranged = ComputeErLayout(nodes, links);
+    // Existing saved/dragged cards keep their locations. New cards must also avoid them.
+    std::vector<RECT> occupied;
+    for (const auto& node : nodes) {
+        const auto position = positions.find(node.id);
+        if (position != positions.end()) occupied.push_back({position->second.x, position->second.y, position->second.x + node.width, position->second.y + node.height});
+    }
+    for (const auto& node : nodes) {
+        if (positions.find(node.id) != positions.end()) continue;
+        const auto found = arranged.find(node.id); if (found == arranged.end()) continue;
+        POINT point{found->second.x, found->second.y};
+        for (;;) {
+            RECT card{point.x - 24, point.y - 24, point.x + node.width + 24, point.y + node.height + 24};
+            int nextY = point.y;
+            for (const auto& obstacle : occupied) { RECT intersection{}; if (IntersectRect(&intersection, &card, &obstacle)) nextY = std::max<int>(nextY, obstacle.bottom + 48); }
+            if (nextY == point.y) break;
+            point.y = nextY;
+        }
+        positions[node.id] = point; occupied.push_back({point.x, point.y, point.x + node.width, point.y + node.height});
+    }
+    erRoutesDirty_ = true;
+}
+void DbStudioView::RebuildErRoutes() {
+    if (!erRoutesDirty_) return;
+    std::vector<ErRouteCard> cards; std::vector<ErRouteConnection> links;
+    const auto& positions = erPositions_[activeDbId_];
+    for (const auto& node : erDiagram_.nodes) {
+        const auto position = positions.find(node.name); if (position == positions.end()) continue;
+        cards.push_back({node.name, {position->second.x, position->second.y, position->second.x + 235, position->second.y + 38 + static_cast<int>(node.columns.size()) * 24}});
+    }
+    const auto rowOffset = [this](const std::string& table, const std::string& column) {
+        for (const auto& node : erDiagram_.nodes) if (node.name == table) {
+            for (size_t index = 0; index < node.columns.size(); ++index) if (node.columns[index].name == column) return 44 + static_cast<int>(index) * 24;
+        }
+        return 15; // Providers can omit the column name from foreign-key metadata.
+    };
+    for (const auto& link : erDiagram_.links) links.push_back({link.source, link.target, rowOffset(link.source, link.sourceCol), rowOffset(link.target, link.targetCol)});
+    erRoutes_ = RouteErConnections(cards, links); erRoutesDirty_ = false;
+    erCrossings_.clear();
+    struct Segment { ErRoutePoint a, b; size_t route; };
+    std::vector<Segment> horizontal, vertical;
+    // This optional visual pass is bounded independently of path search.
+    constexpr size_t maximumSegments = 4096, maximumChecks = 100000, maximumCrossings = 2048;
+    for (size_t index = 0; index < erRoutes_.routes.size() && horizontal.size() + vertical.size() < maximumSegments; ++index) {
+        const auto& points = erRoutes_.routes[index].points;
+        for (size_t segment = 1; segment < points.size() && horizontal.size() + vertical.size() < maximumSegments; ++segment) {
+            auto a = points[segment - 1], b = points[segment];
+            if (a.y == b.y) { if (a.x > b.x) std::swap(a, b); horizontal.push_back({a, b, index}); }
+            else { if (a.y > b.y) std::swap(a, b); vertical.push_back({a, b, index}); }
+        }
+    }
+    std::sort(horizontal.begin(), horizontal.end(), [](const auto& a, const auto& b) { return a.a.y < b.a.y; });
+    size_t checks = 0;
+    for (const auto& v : vertical) {
+        auto h = std::upper_bound(horizontal.begin(), horizontal.end(), v.a.y + 6, [](int y, const auto& segment) { return y < segment.a.y; });
+        for (; h != horizontal.end() && h->a.y < v.b.y - 6 && checks < maximumChecks && erCrossings_.size() < maximumCrossings; ++h, ++checks) {
+            // Keep bends, row ports and shared endpoint stubs intact.
+            if (h->route != v.route && h->a.x + 6 < v.a.x && v.a.x < h->b.x - 6) erCrossings_.push_back({{v.a.x, h->a.y}, h->route, v.route});
+        }
+        if (checks >= maximumChecks || erCrossings_.size() >= maximumCrossings) break;
     }
 }
+void DbStudioView::UpdateErStatus() {
+    std::wstring status;
+    if (hoveredErLink_ >= 0 && hoveredErLink_ < static_cast<int>(erDiagram_.links.size())) {
+        const auto& link = erDiagram_.links[hoveredErLink_]; status = ToWide(link.source + "." + link.sourceCol + " -> " + link.target + "." + link.targetCol);
+    } else if (!selectedErTable_.empty()) {
+        const auto count = std::count_if(erDiagram_.links.begin(), erDiagram_.links.end(), [this](const auto& link) { return link.source == selectedErTable_ || link.target == selectedErTable_; });
+        status = ToWide(selectedErTable_) + L": " + std::to_wstring(count) + L" relationships highlighted. Drag its header to move it.";
+    } else status = std::to_wstring(erDiagram_.nodes.size()) + L" objects, " + std::to_wstring(erDiagram_.links.size()) + L" relationships. Click a table to trace its links.";
+    const auto unresolved = std::count_if(erRoutes_.routes.begin(), erRoutes_.routes.end(), [](const auto& route) { return !route.routed; });
+    if (unresolved) status += L" " + std::to_wstring(unresolved) + (erRoutes_.limited ? L" exceed routing limits." : L" could not be routed; try Auto arrange.");
+    SetWindowTextW(hErStatus_, status.c_str());
+}
 void DbStudioView::UpdateErScrollbars() {
+    RebuildErRoutes();
     const int availableHeight = std::max(1, height_ - erCanvasY_ - Theme::Scale(6));
     const int availableWidth = std::max(1, width_ - erCanvasX_ - Theme::Scale(10));
     erExtentW_ = erExtentH_ = 0;
@@ -1148,6 +1222,8 @@ void DbStudioView::UpdateErScrollbars() {
         erExtentW_ = std::max(erExtentW_, Theme::Scale(found->second.x + 235));
         erExtentH_ = std::max(erExtentH_, Theme::Scale(found->second.y + 38 + static_cast<int>(node.columns.size()) * 24));
     }
+    erExtentW_ = std::max(erExtentW_, Theme::Scale(erRoutes_.extentRight + 24));
+    erExtentH_ = std::max(erExtentH_, Theme::Scale(erRoutes_.extentBottom + 24));
     const bool diagram = workbenchTab_ == 3;
     ShowScrollBar(hWnd_, SB_HORZ, diagram && erExtentW_ > availableWidth);
     ShowScrollBar(hWnd_, SB_VERT, diagram && erExtentH_ > availableHeight);
@@ -1282,28 +1358,74 @@ void DbStudioView::Draw(HDC dc) {
             const int x = erCanvasX_ + Theme::Scale(position->second.x) - erOffsetX_, y = erCanvasY_ + Theme::Scale(position->second.y) - erOffsetY_;
             erCardRects_[node.name] = {x,y,x+Theme::Scale(235),y+Theme::Scale(38+static_cast<int>(node.columns.size())*24)};
         }
-        HPEN linkPen = CreatePen(PS_SOLID,std::max(1,Theme::Scale(1)),colors.accent); SelectObject(dc,linkPen);
-        HBRUSH arrowBrush = CreateSolidBrush(colors.accent); const auto previousBrush = SelectObject(dc,arrowBrush);
-        SetBkMode(dc,TRANSPARENT); SelectObject(dc,Theme::GetSmallFont()); SetTextColor(dc,colors.textSecondary);
-        for (const auto& link : erDiagram_.links) {
-            const auto source=erCardRects_.find(link.source), target=erCardRects_.find(link.target); if(source==erCardRects_.end()||target==erCardRects_.end())continue;
-            const int sourceY=source->second.top+Theme::Scale(24), targetY=target->second.top+Theme::Scale(24);
-            const int bend=std::max(Theme::Scale(32),static_cast<int>(std::abs(target->second.left-source->second.right))/2);
-            POINT curve[4]={{source->second.right,sourceY},{source->second.right+bend,sourceY},{target->second.left-bend,targetY},{target->second.left,targetY}};
-            PolyBezier(dc,curve,4); POINT arrow[3]={{target->second.left,targetY},{target->second.left-Theme::Scale(7),targetY-Theme::Scale(4)},{target->second.left-Theme::Scale(7),targetY+Theme::Scale(4)}}; Polygon(dc,arrow,3);
-            RECT label{(source->second.right+target->second.left)/2-Theme::Scale(80),(sourceY+targetY)/2-Theme::Scale(25),(source->second.right+target->second.left)/2+Theme::Scale(80),(sourceY+targetY)/2};
-            DrawTextW(dc,ToWide(link.sourceCol+" -> "+link.targetCol).c_str(),-1,&label,DT_CENTER|DT_SINGLELINE|DT_END_ELLIPSIS);
+        const auto screenPoint = [this](const ErRoutePoint& point) { return POINT{erCanvasX_ + Theme::Scale(point.x) - erOffsetX_, erCanvasY_ + Theme::Scale(point.y) - erOffsetY_}; };
+        const auto emphasized = [this](size_t index) {
+            const auto& link = erDiagram_.links[index];
+            return static_cast<int>(index) == hoveredErLink_ || (!selectedErTable_.empty() && (link.source == selectedErTable_ || link.target == selectedErTable_));
+        };
+        const auto routeColor = [&](size_t index) { return (!selectedErTable_.empty() || hoveredErLink_ >= 0) && !emphasized(index) ? colors.textMuted : colors.accent; };
+        const auto paintRoute = [&](size_t index, bool markers) {
+            const auto& route = erRoutes_.routes[index]; if (!route.routed || route.points.size() < 2) return;
+            const bool highlight = emphasized(index);
+            const COLORREF color = routeColor(index);
+            HPEN pen = CreatePen(PS_SOLID, std::max(1, Theme::Scale(highlight ? 2 : 1)), color);
+            const auto previousPen = SelectObject(dc, pen);
+            if (!markers) {
+                std::vector<POINT> points; points.reserve(route.points.size());
+                for (const auto& point : route.points) points.push_back(screenPoint(point));
+                Polyline(dc, points.data(), static_cast<int>(points.size()));
+            } else {
+                const POINT source = screenPoint(route.source.point), target = screenPoint(route.target.point);
+                const int outward = route.target.side == ErRouteSide::Left ? -1 : 1;
+                POINT arrow[3]{{target.x, target.y}, {target.x + outward * Theme::Scale(8), target.y - Theme::Scale(4)}, {target.x + outward * Theme::Scale(8), target.y + Theme::Scale(4)}};
+                HBRUSH brush = CreateSolidBrush(color); const auto previousBrush = SelectObject(dc, brush); Polygon(dc, arrow, 3);
+                SelectObject(dc, Theme::GetBgSecondaryBrush()); const int radius = Theme::Scale(3);
+                Ellipse(dc, source.x - radius, source.y - radius, source.x + radius + 1, source.y + radius + 1);
+                SelectObject(dc, previousBrush); DeleteObject(brush);
+            }
+            SelectObject(dc, previousPen); DeleteObject(pen);
+        };
+        // Draw the selected relationships last so they remain traceable at crossings.
+        for (int pass = 0; pass < 2; ++pass) for (size_t index = 0; index < erRoutes_.routes.size(); ++index) if (emphasized(index) == (pass == 1)) paintRoute(index, false);
+        std::map<std::pair<int, int>, std::pair<size_t, bool>> crossingTops;
+        const auto priority = [&](size_t index, bool horizontal) { return (static_cast<int>(index) == hoveredErLink_ ? 4 : emphasized(index) ? 2 : 0) + (horizontal ? 1 : 0); };
+        for (const auto& crossing : erCrossings_) {
+            const auto key = std::make_pair(crossing.point.x, crossing.point.y);
+            for (const auto candidate : {std::make_pair(crossing.horizontal, true), std::make_pair(crossing.vertical, false)}) {
+                const auto found = crossingTops.find(key);
+                if (found == crossingTops.end() || priority(candidate.first, candidate.second) > priority(found->second.first, found->second.second)) crossingTops[key] = candidate;
+            }
         }
-        SelectObject(dc,previousBrush); SelectObject(dc,separator); DeleteObject(arrowBrush); DeleteObject(linkPen);
+        if (!crossingTops.empty()) {
+            HPEN erasePen = CreatePen(PS_SOLID, 1, colors.bgPrimary); HBRUSH eraseBrush = CreateSolidBrush(colors.bgPrimary);
+            const auto previousPen = SelectObject(dc, erasePen), previousBrush = SelectObject(dc, eraseBrush);
+            const int radius = Theme::Scale(4);
+            for (const auto& crossing : crossingTops) {
+                const POINT point = screenPoint({crossing.first.first, crossing.first.second});
+                SelectObject(dc, erasePen); Ellipse(dc, point.x - radius, point.y - radius, point.x + radius + 1, point.y + radius + 1);
+                HPEN topPen = CreatePen(PS_SOLID, std::max(1, Theme::Scale(emphasized(crossing.second.first) ? 2 : 1)), routeColor(crossing.second.first));
+                SelectObject(dc, topPen);
+                const bool horizontal = crossing.second.second;
+                MoveToEx(dc, point.x - (horizontal ? radius + 1 : 0), point.y - (horizontal ? 0 : radius + 1), nullptr);
+                LineTo(dc, point.x + (horizontal ? radius + 2 : 0), point.y + (horizontal ? 0 : radius + 2));
+                SelectObject(dc, erasePen); DeleteObject(topPen);
+            }
+            SelectObject(dc, previousPen); SelectObject(dc, previousBrush); DeleteObject(erasePen); DeleteObject(eraseBrush);
+        }
+        SetBkMode(dc,TRANSPARENT);
         for (const auto& node : erDiagram_.nodes) {
             const auto found = erCardRects_.find(node.name); if(found==erCardRects_.end())continue; const RECT bounds=found->second;
+            HPEN selectedPen = node.name == selectedErTable_ ? CreatePen(PS_SOLID, std::max(1, Theme::Scale(2)), colors.accent) : nullptr;
+            if (selectedPen) SelectObject(dc, selectedPen);
             HBRUSH background=CreateSolidBrush(colors.bgSecondary); const auto oldBrush=SelectObject(dc,background); RoundRect(dc,bounds.left,bounds.top,bounds.right,bounds.bottom,Theme::Scale(6),Theme::Scale(6)); SelectObject(dc,oldBrush); DeleteObject(background);
             RECT header{bounds.left,bounds.top,bounds.right,bounds.top+Theme::Scale(30)}; FillRect(dc,&header,Theme::GetBgTertiaryBrush());
             SelectObject(dc,Theme::GetBoldFont()); SetTextColor(dc,colors.textPrimary); InflateRect(&header,-Theme::Scale(8),0); DrawTextW(dc,ToWide(node.name).c_str(),-1,&header,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS);
             int y=bounds.top+Theme::Scale(32); SelectObject(dc,Theme::GetSmallFont());
             for(const auto& column:node.columns) { RECT line{bounds.left+Theme::Scale(8),y,bounds.right-Theme::Scale(8),y+Theme::Scale(24)}; SetTextColor(dc,column.pk?colors.methodPost:colors.textSecondary);
                 DrawTextW(dc,ToWide((column.pk?"[PK] ":"")+column.name+" ("+column.type+")").c_str(),-1,&line,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS); y+=Theme::Scale(24); }
+            if (selectedPen) { SelectObject(dc, separator); DeleteObject(selectedPen); }
         }
+        for (int pass = 0; pass < 2; ++pass) for (size_t index = 0; index < erRoutes_.routes.size(); ++index) if (emphasized(index) == (pass == 1)) paintRoute(index, true);
         RestoreDC(dc,saved);
     }
     SelectObject(dc,originalPen); DeleteObject(separator);
@@ -1365,15 +1487,15 @@ LRESULT CALLBACK DbStudioView::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
         }
         if (bar == SB_HORZ) pThis->erOffsetX_ = position;
         else pThis->erOffsetY_ = position;
-        pThis->UpdateErScrollbars(); InvalidateRect(hWnd, nullptr, TRUE);
+        pThis->hoveredErLink_ = -1; pThis->UpdateErScrollbars(); pThis->UpdateErStatus(); InvalidateRect(hWnd, nullptr, TRUE);
         return 0;
     }
     case WM_MOUSEWHEEL:
         if (pThis && pThis->workbenchTab_ == 3) {
             const int delta = GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA * Theme::Scale(72);
-            if ((GET_KEYSTATE_WPARAM(wParam) & MK_SHIFT) || pThis->erExtentH_ <= pThis->height_ - Theme::Scale(84)) pThis->erOffsetX_ -= delta;
+            if ((GET_KEYSTATE_WPARAM(wParam) & MK_SHIFT) || pThis->erExtentH_ <= std::max(1, pThis->height_ - pThis->erCanvasY_ - Theme::Scale(6))) pThis->erOffsetX_ -= delta;
             else pThis->erOffsetY_ -= delta;
-            pThis->UpdateErScrollbars(); InvalidateRect(hWnd, nullptr, TRUE); return 0;
+            pThis->hoveredErLink_ = -1; pThis->UpdateErScrollbars(); pThis->UpdateErStatus(); InvalidateRect(hWnd, nullptr, TRUE); return 0;
         }
         break;
     case WM_TIMER:
@@ -1412,7 +1534,7 @@ LRESULT CALLBACK DbStudioView::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
             else if (id == 3213 && code == CBN_SELCHANGE && !pThis->IsBusy()) { static constexpr int pageSizes[] = {10,25,50,100}; const int choice = static_cast<int>(SendMessageW(pThis->hComboPageSize_, CB_GETCURSEL, 0, 0)); if (choice >= 0 && choice < 4) { pThis->gridPageSize_ = pageSizes[choice]; pThis->gridPage_ = 1; pThis->RefreshDataGrid(); } }
             else if (id == 3214 && !pThis->IsBusy()) pThis->RefreshDataGrid();
             else if (id == 3305) { if (!CopyNativeText(hWnd, CodeEditor::GetText(pThis->hEditSchemaDdl_))) throw std::runtime_error("Clipboard is currently unavailable."); if (pThis->OnToast) pThis->OnToast("DDL copied."); }
-            else if (id == 3405) { pThis->EnsureErPositions(true); pThis->UpdateErScrollbars(); pThis->SaveWorkspace(); InvalidateRect(hWnd,nullptr,TRUE); }
+            else if (id == 3405) { pThis->hoveredErLink_ = -1; pThis->EnsureErPositions(true); pThis->UpdateErScrollbars(); pThis->UpdateErStatus(); pThis->SaveWorkspace(); InvalidateRect(hWnd,nullptr,TRUE); }
             else if (id == 3201 && code == CBN_SELCHANGE && !pThis->IsBusy()) {
                 const int selected = static_cast<int>(SendMessageW(pThis->hComboGridTable_, CB_GETCURSEL, 0, 0));
                 if (selected >= 0 && selected < static_cast<int>(pThis->schema_.tables.size())) {
@@ -1491,9 +1613,15 @@ LRESULT CALLBACK DbStudioView::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
     case WM_LBUTTONDOWN:
         if(pThis && pThis->workbenchTab_==3 && !pThis->IsBusy()) {
             const POINT point{GET_X_LPARAM(lParam),GET_Y_LPARAM(lParam)};
-            if(point.x>=pThis->erCanvasX_ && point.y>=pThis->erCanvasY_) for(auto card=pThis->erCardRects_.rbegin();card!=pThis->erCardRects_.rend();++card) {
-                RECT header=card->second;header.bottom=header.top+Theme::Scale(30);
-                if(PtInRect(&header,point)){pThis->draggedTable_=card->first;pThis->dragStart_=point;pThis->dragPosition_=pThis->erPositions_[pThis->activeDbId_][card->first];SetCapture(hWnd);return 0;}
+            if(point.x>=pThis->erCanvasX_ && point.y>=pThis->erCanvasY_) {
+                pThis->hoveredErLink_ = -1; pThis->selectedErTable_.clear();
+                for(auto card=pThis->erCardRects_.rbegin();card!=pThis->erCardRects_.rend();++card) {
+                    if (!PtInRect(&card->second, point)) continue;
+                    pThis->selectedErTable_ = card->first;
+                    if (point.y < card->second.top + Theme::Scale(30)) { pThis->draggedTable_=card->first;pThis->dragStart_=point;pThis->dragPosition_=pThis->erPositions_[pThis->activeDbId_][card->first];SetCapture(hWnd); }
+                    break;
+                }
+                pThis->UpdateErStatus(); InvalidateRect(hWnd, nullptr, FALSE); return 0;
             }
         }
         break;
@@ -1503,9 +1631,33 @@ LRESULT CALLBACK DbStudioView::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
             POINT& position=pThis->erPositions_[pThis->activeDbId_][pThis->draggedTable_];
             position.x=std::max<int>(8,pThis->dragPosition_.x+MulDiv(GET_X_LPARAM(lParam)-pThis->dragStart_.x,100,scale));
             position.y=std::max<int>(8,pThis->dragPosition_.y+MulDiv(GET_Y_LPARAM(lParam)-pThis->dragStart_.y,100,scale));
-            pThis->UpdateErScrollbars();InvalidateRect(hWnd,nullptr,FALSE);return 0;
+            pThis->erRoutesDirty_ = true; pThis->UpdateErScrollbars(); pThis->UpdateErStatus(); InvalidateRect(hWnd,nullptr,FALSE);return 0;
+        }
+        if (pThis && pThis->workbenchTab_ == 3) {
+            const POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+            int hovered = -1;
+            bool overCard = false; for (const auto& card : pThis->erCardRects_) if (PtInRect(&card.second, point)) { overCard = true; break; }
+            if (!overCard && point.x >= pThis->erCanvasX_ && point.y >= pThis->erCanvasY_) {
+                const int x = MulDiv(point.x - pThis->erCanvasX_ + pThis->erOffsetX_, 100, std::max(1, Theme::Scale(100)));
+                const int y = MulDiv(point.y - pThis->erCanvasY_ + pThis->erOffsetY_, 100, std::max(1, Theme::Scale(100)));
+                int distance = 7;
+                for (size_t index = 0; index < pThis->erRoutes_.routes.size(); ++index) {
+                    const auto& route = pThis->erRoutes_.routes[index];
+                    for (size_t segment = 1; segment < route.points.size(); ++segment) {
+                        const auto& a = route.points[segment-1]; const auto& b = route.points[segment];
+                        int candidate = 1000000;
+                        if (a.x == b.x && y >= std::min(a.y, b.y) && y <= std::max(a.y, b.y)) candidate = std::abs(x - a.x);
+                        if (a.y == b.y && x >= std::min(a.x, b.x) && x <= std::max(a.x, b.x)) candidate = std::abs(y - a.y);
+                        if (candidate < distance) { distance = candidate; hovered = static_cast<int>(index); }
+                    }
+                }
+            }
+            if (pThis->hoveredErLink_ != hovered) { pThis->hoveredErLink_ = hovered; pThis->UpdateErStatus(); InvalidateRect(hWnd, nullptr, FALSE); }
+            TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE, hWnd, 0}; TrackMouseEvent(&track);
         }
         break;
+    case WM_MOUSELEAVE:
+        if (pThis && pThis->hoveredErLink_ != -1) { pThis->hoveredErLink_ = -1; pThis->UpdateErStatus(); InvalidateRect(hWnd, nullptr, FALSE); } return 0;
     case WM_LBUTTONUP:
         if(pThis && !pThis->draggedTable_.empty()){pThis->draggedTable_.clear();ReleaseCapture();pThis->SaveWorkspace();return 0;}
         break;
@@ -1684,7 +1836,7 @@ bool DbStudioView::RunSelfTests(std::wstring& failure) {
                 L"closing a running query document cancels it and discards its late result");
             std::string tallSchema = "CREATE TABLE zz_ui_tall(id INTEGER PRIMARY KEY";
             for (int column = 0; column < 32; ++column) tallSchema += ",column_" + std::to_string(column) + " TEXT";
-            tallSchema += ");";
+            tallSchema += "); CREATE TABLE er_child(id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES ui_rows(id));";
             view.LoadSql(tallSchema); view.Execute();
             passed &= check(waitForCompletion() && view.lastQueryResult_.error.empty(), L"large schema loads for ER scroll acceptance");
             // At 150% text and 144 DPI, a 1366x920 window leaves about this
@@ -1712,16 +1864,43 @@ bool DbStudioView::RunSelfTests(std::wstring& failure) {
                 }
             }
             view.SelectWorkbenchTab(3);
+            passed &= check(view.erDiagram_.links.size() == 1 && view.erRoutes_.routes.size() == 1 && view.erRoutes_.routes.front().routed,
+                L"native ER view routes a real introspected foreign key");
+            if (!view.erRoutes_.routes.empty() && view.erRoutes_.routes.front().routed) {
+                const auto& route = view.erRoutes_.routes.front();
+                passed &= check(route.source.point.y == view.erPositions_[view.activeDbId_]["er_child"].y + 68
+                    && route.target.point.y == view.erPositions_[view.activeDbId_]["ui_rows"].y + 44,
+                    L"ER connector endpoints align with foreign-key and referenced column rows");
+                const auto before = route.points;
+                view.UpdateErScrollbars();
+                passed &= check(!view.erRoutesDirty_ && view.erRoutes_.routes.front().points == before,
+                    L"ER scrollbar updates preserve the logical routing cache");
+                const int outward = route.source.side == ErRouteSide::Left ? -1 : 1;
+                const int hx = view.erCanvasX_ + Theme::Scale(route.source.point.x + outward * 6) - view.erOffsetX_;
+                const int hy = view.erCanvasY_ + Theme::Scale(route.source.point.y) - view.erOffsetY_;
+                SendMessageW(view.hWnd_, WM_MOUSEMOVE, 0, MAKELPARAM(hx, hy));
+                wchar_t status[256]{}; GetWindowTextW(view.hErStatus_, status, 256);
+                passed &= check(view.hoveredErLink_ == 0 && std::wstring(status).find(L"er_child.parent_id -> ui_rows.id") != std::wstring::npos,
+                    L"hovering an ER connection reveals its exact relationship without canvas labels");
+                SendMessageW(view.hWnd_, WM_MOUSELEAVE, 0, 0);
+            }
             HDC canvas=GetDC(view.hWnd_);view.Draw(canvas);ReleaseDC(view.hWnd_,canvas);
             const auto card=view.erCardRects_.find("ui_rows");
             if(card!=view.erCardRects_.end()) {
                 const auto original=view.erPositions_[view.activeDbId_]["ui_rows"];
                 const int x=card->second.left+Theme::Scale(15),y=card->second.top+Theme::Scale(15);
+                SendMessageW(view.hWnd_, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, card->second.top + Theme::Scale(44)));
+                passed &= check(view.selectedErTable_ == "ui_rows" && GetCapture() != view.hWnd_, L"ER table body selection highlights links without starting a drag");
                 SendMessageW(view.hWnd_,WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM(x,y));
                 SendMessageW(view.hWnd_,WM_MOUSEMOVE,MK_LBUTTON,MAKELPARAM(x+Theme::Scale(50),y+Theme::Scale(20)));
                 SendMessageW(view.hWnd_,WM_LBUTTONUP,0,MAKELPARAM(x+Theme::Scale(50),y+Theme::Scale(20)));
                 const auto moved=view.erPositions_[view.activeDbId_]["ui_rows"];
                 passed &= check(moved.x==original.x+50 && moved.y==original.y+20,L"ER card dragging stores DPI-independent positions");
+                passed &= check(!view.erRoutesDirty_ && !view.erRoutes_.routes.empty() && view.erRoutes_.routes.front().routed
+                    && view.erRoutes_.routes.front().target.point.y == moved.y + 44, L"dragging an ER table rebuilds its column-level connector");
+                view.RefreshErDiagram();
+                passed &= check(view.erPositions_[view.activeDbId_]["ui_rows"].x == moved.x && view.erPositions_[view.activeDbId_]["ui_rows"].y == moved.y,
+                    L"schema refresh preserves manually positioned ER cards");
             } else passed &= check(false,L"ER card hit-test geometry");
             view.SaveWorkspace();
             std::ifstream protectedFile(std::filesystem::u8path(engine.WorkspaceDirectory())/"query-workspace.bin",std::ios::binary);
@@ -1730,6 +1909,25 @@ bool DbStudioView::RunSelfTests(std::wstring& failure) {
             { DbStudioView restored(&engine);restored.LoadWorkspace();
             passed &= check(restored.documents_.size()==view.documents_.size() && restored.documents_[restored.activeDocument_].sql==view.documents_[view.activeDocument_].sql && restored.queryHistory_.size()==view.queryHistory_.size(),L"protected query documents and history survive reload");
             passed &= check(restored.erPositions_[view.activeDbId_]["ui_rows"].x==view.erPositions_[view.activeDbId_]["ui_rows"].x,L"ER layout survives workspace reload"); }
+            SendMessageW(view.hWnd_, WM_COMMAND, 3405, 0);
+            bool cardsClear = true;
+            for (size_t a = 0; a < view.erDiagram_.nodes.size(); ++a) {
+                const auto& nodeA = view.erDiagram_.nodes[a]; const auto& pointA = view.erPositions_[view.activeDbId_][nodeA.name];
+                const RECT boundsA{pointA.x, pointA.y, pointA.x + 235, pointA.y + 38 + static_cast<int>(nodeA.columns.size()) * 24};
+                for (size_t b = a + 1; b < view.erDiagram_.nodes.size(); ++b) {
+                    const auto& nodeB = view.erDiagram_.nodes[b]; const auto& pointB = view.erPositions_[view.activeDbId_][nodeB.name];
+                    const RECT boundsB{pointB.x, pointB.y, pointB.x + 235, pointB.y + 38 + static_cast<int>(nodeB.columns.size()) * 24}; RECT intersection{};
+                    if (IntersectRect(&intersection, &boundsA, &boundsB)) cardsClear = false;
+                }
+            }
+            passed &= check(cardsClear && view.erOffsetX_ == 0 && view.erOffsetY_ == 0 && !view.erRoutes_.routes.empty() && view.erRoutes_.routes.front().routed,
+                L"Auto arrange separates variable-height cards and reroutes their relationships");
+            RECT erWindow{}, erClient{}; GetWindowRect(view.hWnd_, &erWindow); GetClientRect(view.hWnd_, &erClient);
+            const int erFrameHeight = erWindow.bottom - erWindow.top - erClient.bottom;
+            view.Resize(0, 0, 1318, view.erExtentH_ + view.erCanvasY_ + Theme::Scale(6) + erFrameHeight);
+            SendMessageW(view.hWnd_, WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(-WHEEL_DELTA)), 0);
+            passed &= check(view.erOffsetX_ > 0 && view.erOffsetY_ == 0, L"ER wheel uses horizontal scrolling when the actual vertical canvas fits exactly");
+            view.Resize(0, 0, 1318, 620); view.erOffsetX_ = view.erOffsetY_ = 0; view.UpdateErScrollbars();
             view.SelectWorkbenchTab(2);
             passed &= check(ListView_GetItemCount(view.hListSchemaCols_) == 2
                 && CodeEditor::GetText(view.hEditSchemaDdl_).find(L"ui_rows") != std::wstring::npos,

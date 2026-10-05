@@ -1,4 +1,4 @@
-param([ValidateSet('Release')][string]$Configuration='Release',[ValidateSet('x64')][string]$Platform='x64',[ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.]+)?$')][string]$Version='1.2.0',[string]$VisualStudioPath='', [string]$Toolset='v145',[string]$SdkVersion='10.0.26100.0')
+param([ValidateSet('Release')][string]$Configuration='Release',[ValidateSet('x64')][string]$Platform='x64',[ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.]+)?$')][string]$Version='1.2.1',[string]$VisualStudioPath='', [string]$Toolset='v145',[string]$SdkVersion='10.0.26100.0')
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'common.ps1')
